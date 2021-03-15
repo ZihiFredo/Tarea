@@ -1,0 +1,31 @@
+--Cómo obtenemos todos los nombres y correos de nuestros clientes canadienses para una campaña?
+
+select c.first_name, c.last_name , c.email, c3.country from customer c 
+join address a using (address_id)
+join city c2 using (city_id)
+join country c3 using (country_id)
+where c3.country = 'Canada';
+
+--Qué cliente ha rentado más de nuestra sección de adultos?
+
+select c.first_name, c.last_name, count(r.rental_id) contado from customer c 
+join rental r using (customer_id)
+join inventory i using (inventory_id)
+join film f using (film_id)
+where f.rating = 'NC-17' 
+group by c.first_name, c.last_name
+order by contado desc limit 1;
+
+--Qué películas son las más rentadas en todas nuestras stores?
+
+select distinct s.store_id , count(f.film_id), f.title 
+from store s join inventory i on(i.store_id=s.store_id) join film f 
+on(f.film_id=i.film_id) join rental r2 on(r2.inventory_id=i.inventory_id)
+group by s.store_id , f.film_id order by count(f.film_id) desc limit 2;
+
+--Cuál es nuestro revenue por store?
+
+select s.store_id, sum(p.amount) from store s 
+join staff s2 using (store_id)
+join payment p using (staff_id)
+group by s.store_id;
