@@ -1,0 +1,116 @@
+Tarea 1
+
+--Cuál es el promedio, en formato human-readable, de tiempo entre cada pago por cliente de la BD Sakila?
+
+with t as (
+	select p.payment_date as fecha, p.payment_id as id 
+	from payment p where p.payment_id > 1
+),
+s as(
+	select sum(age(t.fecha, pa.payment_date)) as tiempo, pa.customer_id as idd, count(pa.payment_id) as suma 
+	from payment pa join t on (pa.payment_id = t.id-1)
+	where age(t.fecha, pa.payment_date) > '00:00'::interval
+	group by pa.customer_id 
+) 
+select concat(c.first_name, ' ', c.last_name), (s.tiempo/s.suma) as dias_promedio_de_pago, pay.customer_id as id 
+from payment pay join s on (pay.customer_id = s.idd)
+join customer c using (customer_id)
+group by pay.customer_id,(s.tiempo/s.suma),concat(c.first_name, ' ', c.last_name);
+
+with y as (
+	select r.rental_date as fecha, r.rental_id as id 
+	from rental r where r.rental_id > 1
+),
+w as(
+	select sum(age(y.fecha, re.rental_date)) as tiempo, re.customer_id as idd, count(re.rental_id) as suma 
+	from rental re join y on (re.rental_id = y.id-1)
+	where age(y.fecha, re.rental_date) > '00:00'::interval
+	group by re.customer_id 
+)
+select concat(c.first_name, ' ', c.last_name), (w.tiempo/w.suma) as dias_promedio_de_renta, ren.customer_id as id 
+from rental ren join w on (ren.customer_id = w.idd)
+join customer c using (customer_id)
+group by ren.customer_id,(w.tiempo/w.suma),concat(c.first_name, ' ', c.last_name);
+	
+--Sigue una distribución normal?
+
+--No
+
+--Qué tanto difiere ese promedio del tiempo entre rentas por cliente?
+
+with 
+t as (
+	select p.payment_date as fecha, p.payment_id as id 
+	from payment p where p.payment_id > 1
+),
+s as(
+	select sum(age(t.fecha, pa.payment_date)) as tiempo, pa.customer_id as idd, count(pa.payment_id) as suma 
+	from payment pa join t on (pa.payment_id = t.id-1)
+	where age(t.fecha, pa.payment_date) > '00:00'::interval
+	group by pa.customer_id 
+),
+y as (
+	select r.rental_date as fecha, r.rental_id as id 
+	from rental r where r.rental_id > 1
+),
+w as(
+	select sum(age(y.fecha, re.rental_date)) as tiempo, re.customer_id as idd, count(re.rental_id) as suma 
+	from rental re join y on (re.rental_id = y.id-1)
+	where age(y.fecha, re.rental_date) > '00:00'::interval
+	group by re.customer_id 
+) 
+select concat(c.first_name, ' ', c.last_name) as nombre, pay.customer_id as id, 
+(s.tiempo/s.suma) as dias_promedio_de_pagos, (w.tiempo/w.suma) as dias_promedio_de_renta,
+((s.tiempo/s.suma) - (w.tiempo/w.suma)) as diferencia
+from payment pay join s on (pay.customer_id = s.idd)
+join rental ren using (customer_id)
+join w on (ren.customer_id = w.idd)
+join customer c using (customer_id)
+group by pay.customer_id,(s.tiempo/s.suma),(w.tiempo/w.suma),
+((s.tiempo/s.suma) - (w.tiempo/w.suma)),concat(c.first_name, ' ', c.last_name);
+
+--Tarea 2
+
+--Parte de la infraestructura es diseñar contenedores cilíndricos giratorios para facilitar la colocación 
+--y extracción de discos por brazos automatizados. Cada cajita de Blu-Ray mide 20cm x 13.5cm x 1.5cm, y 
+--para que el brazo pueda manipular adecuadamente cada cajita, debe estar contenida dentro de un arnés que 
+--cambia las medidas a 30cm x 21cm x 8cm para un espacio total de 5040 centímetros cúbicos y un peso de 500 
+--gr por película.
+
+--Se nos ha encargado formular la medida de dichos cilindros de manera tal que quepan todas las copias de los 
+--Blu-Rays de cada uno de nuestros stores. Las medidas deben ser estándar, es decir, la misma para todas nuestras 
+--stores, y en cada store pueden ser instalados más de 1 de estos cilindros. Cada cilindro aguanta un peso máximo 
+--de 50kg como máximo. El volúmen de un cilindro se calcula de [ésta forma.](volume of a cylinder)
+
+--Solo puede haber 50 kg por cilindro, por lo que solo puede haber 10 Blu-Rays por cilindro
+--Ahora necesitamos sacar cuantos Blu-rays hay por tienda
+
+select s.store_id, count(f.film_id) from store s 
+join inventory i using (store_id) 
+join film f using (film_id)
+group by s.store_id;
+
+--Para la tienda 1 se necesitan 22.7 cilindros, osea 23:
+--(0.5 kg por Blu-ray * 2270 Blu-ray en la tienda 1 = 
+--1135 kg en total / 50 kg por cilindro = 22.7 cilindros para la tienda 1)
+
+--Para la tienda 2 se necesitan 23.11 cilindros, osea 24:
+--(0.5 kg por Blu-rays * 2311 Blu-rays en la tienda 2 = 
+--1155.5 kg en total / 50 kg por cilindro = 23.11 cilindros para la tienda 2)
+
+select s.store_id, count(f.film_id) as Blue_Rays_Totales, 
+count(f.film_id)*0.5 as Kilos_Totales,
+ceil(count(f.film_id)*0.5/50) as Cilindros
+from store s join inventory i using (store_id) 
+join film f using (film_id)
+group by s.store_id;
+
+--Como cada cilindro tiene que tener 10 Blu-rays de medidas de 30cm x 21cm x 8cm para un espacio total 
+--de 5040 centímetros cúbicos por blu-rays. Cada cilindro debe de tener espacio para minimo 50400 
+--centrimetros cubicos de espacio. Como la formula de el volumen de un cilindro es = pi*radio^2*altura
+--Como un Blu-Ray es rectangular, tomamos como su "radio" la distancia de esquina a esquina opuesta / 2
+--((30^2*21^2)^)(1/2)/2 = 18.31 de radio) y la altura es 8 cm * 10 Blu-Rays = 80 cm. Eso nos da un volumen 
+--de pi*(18.31^2)*80 = 84260 centimetros cubicos. Por lo que las medidas de los cilindros deberan ser minimo 
+--80 cm de altura y radio de 18.31 cm, aunque probablemente deberan ser un poco mas grande para asegurar que quepan.
+--El espacio extra que queda, se debe a que estamos metiendo cajas cuadradas dentro de un cilindro, por lo que en 
+--los lados queda aun espacio.
