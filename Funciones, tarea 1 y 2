@@ -2,72 +2,130 @@ Tarea 1
 
 --Cuál es el promedio, en formato human-readable, de tiempo entre cada pago por cliente de la BD Sakila?
 
-with t as (
-	select p.payment_date as fecha, p.payment_id as id 
+with 
+time_payment as (
+	select p.payment_date as fecha, p.payment_id as clave 
 	from payment p where p.payment_id > 1
 ),
-s as(
-	select sum(age(t.fecha, pa.payment_date)) as tiempo, pa.customer_id as idd, count(pa.payment_id) as suma 
-	from payment pa join t on (pa.payment_id = t.id-1)
-	where age(t.fecha, pa.payment_date) > '00:00'::interval
+per_client_pay as(
+	select sum(age(time_payment.fecha, pa.payment_date)) as tiempo, pa.customer_id as clave_pay, count(pa.payment_id) as suma 
+	from payment pa join time_payment on (pa.payment_id = time_payment.clave-1)
+	where age(time_payment.fecha, pa.payment_date) > '00:00'::interval
 	group by pa.customer_id 
-) 
-select concat(c.first_name, ' ', c.last_name), (s.tiempo/s.suma) as dias_promedio_de_pago, pay.customer_id as id 
-from payment pay join s on (pay.customer_id = s.idd)
-join customer c using (customer_id)
-group by pay.customer_id,(s.tiempo/s.suma),concat(c.first_name, ' ', c.last_name);
-
-with y as (
-	select r.rental_date as fecha, r.rental_id as id 
-	from rental r where r.rental_id > 1
-),
-w as(
-	select sum(age(y.fecha, re.rental_date)) as tiempo, re.customer_id as idd, count(re.rental_id) as suma 
-	from rental re join y on (re.rental_id = y.id-1)
-	where age(y.fecha, re.rental_date) > '00:00'::interval
-	group by re.customer_id 
 )
-select concat(c.first_name, ' ', c.last_name), (w.tiempo/w.suma) as dias_promedio_de_renta, ren.customer_id as id 
-from rental ren join w on (ren.customer_id = w.idd)
+select concat(c.first_name, ' ', c.last_name) as nombre, pay.customer_id as id_cliente, 
+(per_client_pay.tiempo/per_client_pay.suma) as dias_promedio_de_pagos
+from payment pay join per_client_pay on (pay.customer_id = per_client_pay.clave_pay)
 join customer c using (customer_id)
-group by ren.customer_id,(w.tiempo/w.suma),concat(c.first_name, ' ', c.last_name);
+group by pay.customer_id,(per_client_pay.tiempo/per_client_pay.suma),concat(c.first_name, ' ', c.last_name);
 	
 --Sigue una distribución normal?
 
---No
+with 
+time_payment as (
+	select p.payment_date as fecha, p.payment_id as clave 
+	from payment p where p.payment_id > 1
+),
+per_client_pay as(
+	select sum(age(time_payment.fecha, pa.payment_date)) as tiempo, pa.customer_id as clave_pay, count(pa.payment_id) as suma 
+	from payment pa join time_payment on (pa.payment_id = time_payment.clave-1)
+	where age(time_payment.fecha, pa.payment_date) > '00:00'::interval
+	group by pa.customer_id 
+),
+tabla as(
+	select concat(c.first_name, ' ', c.last_name) as nombre, pay.customer_id as id_cliente, 
+	(per_client_pay.tiempo/per_client_pay.suma) as dias_promedio_de_pagos
+	from payment pay join per_client_pay on (pay.customer_id = per_client_pay.clave_pay)
+	join customer c using (customer_id) group by pay.customer_id,(per_client_pay.tiempo/per_client_pay.suma),
+	concat(c.first_name, ' ', c.last_name)
+),
+varianza as(
+select c2.customer_id, extract('epoch' from ta.dias_promedio_de_pagos) / 86400 as num_dias
+from customer c2 join tabla ta on(ta.id_cliente = c2.customer_id)
+group by c2.customer_id, ta.dias_promedio_de_pagos
+)
+select variance(va.num_dias) as varianza, sqrt(variance(va.num_dias)) as desviacion_estandar from varianza va;
+
+--Como podemos ver, la varianza es 9.622 dias a 3 decimales
+--Y la desviacion esntandar es 3.102 dias a 3 decimales
+--Con esto podemos ver si sigue una distribucion normal
+
+select count(c.customer_id) from customer c 
+
+--Hay 599 clientes en total
+
+select segmentos.segmento, count(*) num_dias, (count(*) / 599::float)*100 porcentaje
+from
+  (with time_payment as (
+	select p.payment_date as fecha, p.payment_id as clave 
+	from payment p where p.payment_id > 1),
+  per_client_pay as(
+	select sum(age(time_payment.fecha, pa.payment_date)) as tiempo, pa.customer_id as clave_pay, count(pa.payment_id) as suma 
+	from payment pa join time_payment on (pa.payment_id = time_payment.clave-1)
+	where age(time_payment.fecha, pa.payment_date) > '00:00'::interval
+	group by pa.customer_id ),
+  tabla as(
+	select concat(c.first_name, ' ', c.last_name) as nombre, pay.customer_id as id_cliente, 
+	(per_client_pay.tiempo/per_client_pay.suma) as dias_promedio_de_pagos
+	from payment pay join per_client_pay on (pay.customer_id = per_client_pay.clave_pay)
+	join customer c using (customer_id) group by pay.customer_id,(per_client_pay.tiempo/per_client_pay.suma),
+	concat(c.first_name, ' ', c.last_name))
+select c2.customer_id, extract('epoch' from ta.dias_promedio_de_pagos) / 86400 as num_dias
+from customer c2 join tabla ta on(ta.id_cliente = c2.customer_id)
+group by c2.customer_id, ta.dias_promedio_de_pagos
+  )
+as time_payments join 
+  (select '0-3.417' segmento, 0 limite_inferior, 3.417 limite_superior
+  union all
+  select '3.418-6.519' segmento, 3.418 limite_inferior, 6.519 limite_superior
+  union all
+  select '6.52-9.619' segmento, 6.52 limite_inferior, 9.6219 limite_superior
+  union all
+  select '9.622-12.7239' segmento, 9.622 limite_inferior, 12.7239 limite_superior
+  union all
+  select '12.724-15.8259' segmento, 12.724 limite_inferior, 15.8259 limite_superior
+  union all
+  select '15.826-9999999.99' segmento, 15.826 limite_inferior, 9999999.99 limite_superior)
+as segmentos
+on (time_payments.num_dias between segmentos.limite_inferior and segmentos.limite_superior)
+group by segmentos.segmento order by num_dias;
+
+--Como podemos ver, los datos no siguen una distribucion normal
+
 
 --Qué tanto difiere ese promedio del tiempo entre rentas por cliente?
 
 with 
-t as (
-	select p.payment_date as fecha, p.payment_id as id 
+time_payment as (
+	select p.payment_date as fecha, p.payment_id as clave 
 	from payment p where p.payment_id > 1
 ),
-s as(
-	select sum(age(t.fecha, pa.payment_date)) as tiempo, pa.customer_id as idd, count(pa.payment_id) as suma 
-	from payment pa join t on (pa.payment_id = t.id-1)
-	where age(t.fecha, pa.payment_date) > '00:00'::interval
+per_client_pay as(
+	select sum(age(time_payment.fecha, pa.payment_date)) as tiempo, pa.customer_id as clave_pay, count(pa.payment_id) as suma 
+	from payment pa join time_payment on (pa.payment_id = time_payment.clave-1)
+	where age(time_payment.fecha, pa.payment_date) > '00:00'::interval
 	group by pa.customer_id 
 ),
-y as (
-	select r.rental_date as fecha, r.rental_id as id 
+time_rental as (
+	select r.rental_date as fecha, r.rental_id as clave
 	from rental r where r.rental_id > 1
 ),
-w as(
-	select sum(age(y.fecha, re.rental_date)) as tiempo, re.customer_id as idd, count(re.rental_id) as suma 
-	from rental re join y on (re.rental_id = y.id-1)
-	where age(y.fecha, re.rental_date) > '00:00'::interval
-	group by re.customer_id 
+per_client_rent as(
+	select sum(age(time_rental.fecha, re.rental_date)) as tiempo, re.customer_id as clave_rent, count(re.rental_id) as suma 
+	from rental re join time_rental on (re.rental_id = time_rental.clave-1)
+	where age(time_rental.fecha, re.rental_date) > '00:00'::interval
+	group by re.customer_id
 ) 
-select concat(c.first_name, ' ', c.last_name) as nombre, pay.customer_id as id, 
-(s.tiempo/s.suma) as dias_promedio_de_pagos, (w.tiempo/w.suma) as dias_promedio_de_renta,
-((s.tiempo/s.suma) - (w.tiempo/w.suma)) as diferencia
-from payment pay join s on (pay.customer_id = s.idd)
+select concat(c.first_name, ' ', c.last_name) as nombre, pay.customer_id as id_cliente, 
+(per_client_pay.tiempo/per_client_pay.suma) as dias_promedio_de_pagos, 
+(per_client_rent.tiempo/per_client_rent.suma) as dias_promedio_de_renta,
+((per_client_pay.tiempo/per_client_pay.suma) - (per_client_rent.tiempo/per_client_rent.suma)) as diferencia
+from payment pay join per_client_pay on (pay.customer_id = per_client_pay.clave_pay)
 join rental ren using (customer_id)
-join w on (ren.customer_id = w.idd)
+join per_client_rent on (ren.customer_id = per_client_rent.clave_rent)
 join customer c using (customer_id)
-group by pay.customer_id,(s.tiempo/s.suma),(w.tiempo/w.suma),
-((s.tiempo/s.suma) - (w.tiempo/w.suma)),concat(c.first_name, ' ', c.last_name);
+group by pay.customer_id,(per_client_pay.tiempo/per_client_pay.suma),(per_client_rent.tiempo/per_client_rent.suma),
+((per_client_pay.tiempo/per_client_pay.suma) - (per_client_rent.tiempo/per_client_rent.suma)),concat(c.first_name, ' ', c.last_name);
 
 --Tarea 2
 
